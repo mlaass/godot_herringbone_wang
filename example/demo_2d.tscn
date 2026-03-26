@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://dgphd355imgr5"]
+
+[node name="Demo2D" type="Node2D" unique_id=258498870]
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=498782322]
