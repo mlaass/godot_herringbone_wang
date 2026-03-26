@@ -3,7 +3,7 @@ extends Resource
 
 enum Orientation { HORIZONTAL, VERTICAL }
 
-@export var orientation: Orientation = Orientation.HORIZONTAL
+@export var orientation: int = Orientation.HORIZONTAL
 @export var tile_id: int = 0
 @export var constraints: PackedInt32Array = PackedInt32Array()
 @export var width: int = 0

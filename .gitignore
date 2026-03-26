@@ -3,3 +3,7 @@
 /android/
 addons/godot_mcp/
 addons/gut/
+addons/herringbone_wang_generator/native_src/.sconsign.dblite
+addons/herringbone_wang_generator/native_src/src/herringbone_generator.os
+addons/herringbone_wang_generator/native_src/src/register_types.os
+.vscode/settings.json

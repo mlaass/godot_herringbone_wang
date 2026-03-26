@@ -43,7 +43,7 @@ func get_missing_v_constraints() -> Array[PackedInt32Array]:
 
 
 func find_tile_by_constraints(
-  orient: HerringboneMacroData.Orientation,
+  orient: int,
   cons: PackedInt32Array,
 ) -> HerringboneMacroData:
   var tiles: Array[HerringboneMacroData] = (
@@ -57,14 +57,14 @@ func find_tile_by_constraints(
 
 
 func _get_required_count_for_orientation(
-  orient: HerringboneMacroData.Orientation,
+  orient: int,
 ) -> int:
   var combos: Array[PackedInt32Array] = _enumerate_constraint_combos(orient)
   return combos.size()
 
 
 func _get_missing_for_orientation(
-  orient: HerringboneMacroData.Orientation,
+  orient: int,
   tiles: Array[HerringboneMacroData],
 ) -> Array[PackedInt32Array]:
   var existing: Dictionary = {}
@@ -90,7 +90,7 @@ func _get_missing_for_orientation(
 
 
 func _enumerate_constraint_combos(
-  orient: HerringboneMacroData.Orientation,
+  orient: int,
 ) -> Array[PackedInt32Array]:
   var combos: Array[PackedInt32Array] = []
   var color_counts: Array[int] = _get_corner_counts_for_orientation(orient)
@@ -99,7 +99,7 @@ func _enumerate_constraint_combos(
 
 
 func _get_corner_counts_for_orientation(
-  orient: HerringboneMacroData.Orientation,
+  orient: int,
 ) -> Array[int]:
   # Herringbone tiles have 6 constraint vertices. Each vertex belongs to
   # one of 4 corner classes. The mapping from vertex index to corner class
