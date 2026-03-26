@@ -10,26 +10,70 @@ See `docs/initial_prd_herringbone_wang.md` for the product requirements.
 
 ## Running
 
-Open in Godot 4.6+. No build system — run directly from the Godot editor.
+Open in Godot 4.6+. GDScript runs directly from the Godot editor; the native extension requires a one-time build.
 
 ```bash
 godot46                    # Open editor
 godot46 --headless --quit  # Validate project parses
 ```
 
+## Building the GDExtension
+
+Requires [godot-cpp](https://github.com/godotengine/godot-cpp) built at `~/workspace/godot-cpp` and SCons.
+
+```bash
+# Build native extension
+cd addons/herringbone_wang_generator/native_src && scons platform=linux target=release
+
+# Cross-compile for Windows (from Linux)
+cd addons/herringbone_wang_generator/native_src && scons platform=windows target=release
+
+# Verify extension loads
+godot46 --headless --quit 2>&1 | grep -i "error"
+```
+
+Output binaries go to `addons/herringbone_wang_generator/`.
+
 ## Testing
 
+### Headless validation
 After any GDScript or shader change, run headless validation:
 ```bash
 timeout 10 godot46 --headless --path . 2>&1
 ```
 Check for `SCRIPT ERROR`, `Parse Error`, and `Failed to load` in the output.
 
+### GUT tests
+The project uses [GUT](https://github.com/bitwes/Gut) v9.6.0 for unit and integration tests. Tests live in `test/` with `unit/`, `integration/`, and `smoke/` subdirectories.
+
+```bash
+# Run all GUT tests headless
+godot46 -s addons/gut/gut_cmdln.gd --headless
+
+# Run specific test file
+godot46 -s addons/gut/gut_cmdln.gd --headless -gtest=res://test/unit/test_macro_data.gd
+
+# Run tests matching a pattern
+godot46 -s addons/gut/gut_cmdln.gd --headless -gselect=herringbone
+```
+
+All test files use `test_` prefix, extend `GutTest`, and follow the same code conventions as production code.
+
 ## Project Structure
 
 ```
-addons/herringbone_wang_generator/  # The addon (self-contained, installable)
-docs/                               # Design documents and PRDs
+addons/herringbone_wang_generator/   # The addon (self-contained, installable)
+  native_src/                        # C++ GDExtension source
+    thirdparty/                      # Vendored stb_herringbone_wang_tile.h
+    src/                             # C++ wrapper code
+    SConstruct                       # SCons build config
+  herringbone_native.gdextension     # Extension manifest
+  lib*.so / *.dll                    # Compiled native libraries
+docs/                                # Design documents, PRDs, and references
+test/                                # GUT tests
+  unit/                              # Unit tests
+  integration/                       # Integration tests
+  smoke/                             # Smoke/load tests
 ```
 
 ## Code Conventions
@@ -86,6 +130,14 @@ print("GEN: Herringbone pattern built for %s" % region)
 - Use `group_uniforms` for organized inspector UI
 - Include appropriate hints: `filter_nearest`, `source_color`, `repeat_enable`, `hint_range(min, max, step)`
 - Nested groups with dot notation: `group_uniforms textures.detail;`
+
+### C++ Conventions (GDExtension)
+- **Standard:** C++17
+- **Naming:** `PascalCase` classes, `snake_case` methods/variables (matches godot-cpp style)
+- **Bindings:** `ClassDB::bind_method()` / `ADD_PROPERTY()` for Godot-facing API
+- **Files:** One class per `.h/.cpp` pair, `snake_case` filenames
+- **Registration:** All classes registered in `register_types.cpp` at `MODULE_INITIALIZATION_LEVEL_SCENE`
+- **Third-party:** Vendored headers in `native_src/thirdparty/`, never modified
 
 ## Git
 - **NEVER add attribution to commits — no Co-Authored-By, no signatures, no trailers. Plain commit messages only.**

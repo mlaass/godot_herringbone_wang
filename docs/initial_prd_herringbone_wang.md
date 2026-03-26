@@ -24,9 +24,10 @@ To ensure the addon accurately reflects the source material, it will strictly ad
 ## **3\. Architecture & Tech Stack**
 
 * **Engine version:** Godot 4.x.
-* **Backend Module:** GDExtension written in C++ wrapping stb\_herringbone\_wang\_tile.h.
+* **Backend Module:** GDExtension written in C++ wrapping stb\_herringbone\_wang\_tile.h via **pixel proxy encoding** — tile IDs encoded as RGB pixels (R = type index, G+B = extra info), stb used unmodified. See `docs/ref_stb_api.md`.
 * **Frontend Editor:** A GDScript @tool script extending TileMapLayer (the "Authoring Canvas") and standard Editor UI panels.
 * **Outputs:** A standard Godot TileMapLayer populated with the generated cell data.
+* **Testing:** GUT (Godot Unit Testing) framework with headless CLI runner.
 
 ## **4\. Functional Requirements**
 
@@ -90,34 +91,61 @@ Based on the *Infamous* map generation observation (hexagonal connectivity mappe
 
 ## **6\. Implementation Roadmap**
 
-### **Phase 1: Editor Canvas & Macro-Tile Extraction**
+Test-driven development order. Each phase includes GUT tests. See `docs/ref_stb_api.md` for the pixel proxy encoding strategy that bridges the image-based stb library with abstract tile-ID output.
 
-* Create the HerringboneAuthoringLayer @tool script.
-* Implement \_draw() to render the 1:2 / 2:1 bounding boxes and corner vertices.
-* Implement the cell-extraction logic to save Godot TileMapCell data into the HerringboneMacroSet resource.
+### **Phase 1: Foundation — stb Download, GDExtension Scaffold, GUT Setup**
 
-### **Phase 2: GDExtension Core Wrapper**
+* Download and vendor `stb_herringbone_wang_tile.h` (unmodified) into `addons/herringbone_wang_generator/native_src/thirdparty/`.
+* Create GDExtension scaffold following the project's established pattern (see `~/workspace/godot-constraint-solving/addons/wfc_native/`):
+  * `native_src/SConstruct` — SCons build config, links godot-cpp.
+  * `native_src/src/register_types.{h,cpp}` — Extension registration.
+  * `herringbone_native.gdextension` — Extension manifest.
+  * Compiled `.so`/`.dll` output to `addons/herringbone_wang_generator/`.
+* Stub `HerringboneGenerator` C++ class with `generate_abstract_map()` returning empty array.
+* Create `.gutconfig.json` at project root and `test/` directory with `unit/`, `integration/`, `smoke/` subdirectories.
+* **Tests:** `test/smoke/test_addon_loads.gd`, `test/smoke/test_native_binds.gd`.
+* **Gate:** `scons platform=linux target=release` compiles; GUT finds and runs smoke tests.
 
-* Setup GDExtension template.
-* Include stb\_herringbone\_wang\_tile.h.
-* Create stbhwt\_wrapper.cpp exposing the stochastic generation functions to GDScript.
+### **Phase 2: Core Data Structures (GDScript Resources)**
 
-### **Phase 3: Stitching & Map Generation**
+* `HerringboneMacroData` (Resource) — stores 2D cell array + 6 corner constraint values + orientation (H/V).
+* `HerringboneMacroSet` (Resource) — container of HerringboneMacroData, indexed by constraint combination.
+* `HerringboneConstraintCatalog` (Resource) — predefined connectivity templates (hbw-2222, etc.).
+* **Tests:** `test/unit/test_macro_data.gd`, `test/unit/test_macro_set.gd`, `test/unit/test_constraint_catalog.gd`.
+* Serialization round-trips, constraint validation, completeness checking.
 
-* Implement the populate\_tilemap() function.
-* Handle the coordinate math required to seamlessly interlock the $2N \times N$ and $N \times 2N$ rectangular cell grids into a single, unified TileMapLayer.
+### **Phase 3: Generator Engine (GDExtension Core — Pixel Proxy)**
 
-### **Phase 4: Validation & Examples**
+* Implement `HerringboneGenerator` C++ class using the **pixel proxy encoding** approach:
+  * Accept tile definitions from GDScript (constraint values a–f + tile ID + H/V orientation).
+  * Build synthetic template image internally: constraint colors on borders, tile ID encoded in interior pixels (R = tile type 0–255, G+B = extra info).
+  * Call `stbhw_build_tileset_from_image()` to load tileset from synthetic image.
+  * `generate_abstract_map(width, height, seed) -> Array` calls `stbhw_generate_image()`, decodes output pixels back to tile IDs via dictionary lookup.
+* **Tests:** `test/unit/test_herringbone_layout.gd`, `test/integration/test_generate_map.gd`.
+* Deterministic seed output, constraint satisfaction verification, boundary handling, pixel encoding round-trip.
+
+### **Phase 4: Editor Canvas & Authoring + Map Projection**
+
+* Create `HerringboneAuthoringLayer` @tool script extending TileMapLayer.
+* Implement `_draw()` to render the 1:2 / 2:1 bounding boxes and corner vertices.
+* Implement the constraint painter (click-to-cycle corner colors at vertices).
+* Implement cell extraction ("Bake TileSet" button → HerringboneMacroSet resource).
+* Implement `populate_tilemap()` — projects abstract map onto target TileMapLayer, handling the coordinate math to seamlessly interlock the $2N \times N$ and $N \times 2N$ rectangular cell grids.
+* **Tests:** `test/integration/test_cell_extraction.gd`, `test/integration/test_populate_tilemap.gd`.
+
+### **Phase 5: Validation & Examples**
 
 * Build the Inspector validator to warn users of missing color combinations in their complete stochastic sets.
-* Build the **Dungeon** and **City** initialized templates using Godot's built-in prototyping textures.
+* Build the **128-Tile Dungeon** (hbw-2222 schema) initialized template.
+* Build the **Hex-to-Grid City Streets** initialized template.
+* **Tests:** `test/integration/test_stochastic_completeness.gd`.
 
 ## **7\. References & Source Material**
 
-This project heavily references the work and theoretical models established by Sean Barrett.
+This project heavily references the work and theoretical models established by Sean Barrett. Full content archived in `docs/` for offline reference.
 
-* **Core Hub & Overview:** [Herringbone Wang Tiles Project Page](https://nothings.org/gamedev/herringbone/)
-* **Original Article:** [Herringbone Tiles (2011)](https://nothings.org/gamedev/herringbone/herringbone_tiles.html)
-* **Follow-up on Connectivity & Corner Colors:** [More on Herringbone Wang Tiles (2014)](https://nothings.org/gamedev/herringbone/more_herringbone_tiles.html)
-* **Connectivity Rules & Catalogs:** [Wang Tile Pseudo-Connectivity Catalog](https://nothings.org/gamedev/herringbone/connectivity_catalog.html)
-* **STB C/C++ Header Implementation:** [stb\_herringbone\_wang\_tile.h (GitHub Raw)](https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_herringbone_wang_tile.h)
+* **Core Hub & Overview:** [Herringbone Wang Tiles Project Page](https://nothings.org/gamedev/herringbone/) — local: [ref\_hub\_overview.md](ref_hub_overview.md)
+* **Original Article:** [Herringbone Tiles (2011)](https://nothings.org/gamedev/herringbone/herringbone_tiles.html) — local: [ref\_herringbone\_tiles\_2011.md](ref_herringbone_tiles_2011.md)
+* **Follow-up on Connectivity & Corner Colors:** [More on Herringbone Wang Tiles (2014)](https://nothings.org/gamedev/herringbone/more_herringbone_tiles.html) — local: [ref\_more\_herringbone\_tiles\_2014.md](ref_more_herringbone_tiles_2014.md)
+* **Connectivity Rules & Catalogs:** [Wang Tile Pseudo-Connectivity Catalog](https://nothings.org/gamedev/herringbone/connectivity_catalog.html) — local: [ref\_connectivity\_catalog.md](ref_connectivity_catalog.md)
+* **STB C/C++ Header Implementation:** [stb\_herringbone\_wang\_tile.h (GitHub Raw)](https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_herringbone_wang_tile.h) — local: [ref\_stb\_api.md](ref_stb_api.md)
