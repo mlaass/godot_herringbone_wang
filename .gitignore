@@ -5,3 +5,5 @@ addons/godot_mcp/
 addons/gut/
 *.os
 .vscode/settings.json
+*.sconsign.dblite
+*.psd
