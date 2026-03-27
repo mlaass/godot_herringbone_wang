@@ -35,11 +35,16 @@ func test_required_v_count_2222() -> void:
 func test_required_counts_2221() -> void:
   var ms: HerringboneMacroSet = HerringboneMacroSet.new()
   ms.num_colors = PackedInt32Array([2, 2, 2, 1])
-  # H vertices use corner classes [0,1,2,3,0,1]
-  # with colors [2,2,2,1,2,2] -> 2*2*2*1*2*2 = 32
+  # H vertices use corner classes [1,2,3,0,1,2]
+  # with colors [2,1,2,2,2,1] -> 2*1*2*2*2*1 = 16 ... wait
+  # Actually: colors[1]=2, colors[2]=2, colors[3]=1,
+  #           colors[0]=2, colors[1]=2, colors[2]=2
+  # => 2*2*1*2*2*2 = 32
   assert_eq(ms.get_required_h_count(), 32)
-  # V vertices use corner classes [2,3,0,1,2,3]
-  # with colors [2,1,2,2,2,1] -> 2*1*2*2*2*1 = 16
+  # V vertices use corner classes [0,3,2,1,0,3]
+  # colors[0]=2, colors[3]=1, colors[2]=2,
+  # colors[1]=2, colors[0]=2, colors[3]=1
+  # => 2*1*2*2*2*1 = 16
   assert_eq(ms.get_required_v_count(), 16)
 
 

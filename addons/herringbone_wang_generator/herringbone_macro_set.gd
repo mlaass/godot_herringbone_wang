@@ -106,14 +106,14 @@ func _get_corner_counts_for_orientation(
   # depends on orientation (H vs V). For a complete stochastic set, every
   # combination of colors at the 6 vertices must be present.
   #
-  # Corner class assignments per vertex (0-indexed):
-  # Horizontal tile vertices: classes [0, 1, 2, 3, 0, 1]
-  # Vertical tile vertices:   classes [2, 3, 0, 1, 2, 3]
+  # Corner class assignments per vertex (from stb source):
+  #   H tile: a=type1, b=type2, c=type3, d=type0, e=type1, f=type2
+  #   V tile: a=type0, b=type3, c=type2, d=type1, e=type0, f=type3
   var class_map: Array[int] = []
   if orient == HerringboneMacroData.Orientation.HORIZONTAL:
-    class_map = [0, 1, 2, 3, 0, 1]
+    class_map = [1, 2, 3, 0, 1, 2]
   else:
-    class_map = [2, 3, 0, 1, 2, 3]
+    class_map = [0, 3, 2, 1, 0, 3]
 
   var counts: Array[int] = []
   for i: int in range(6):
