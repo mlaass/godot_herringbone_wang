@@ -40,6 +40,15 @@ func _ready() -> void:
   _rebuild_grid()
 
 
+func _get_configuration_warnings() -> PackedStringArray:
+  var warnings: PackedStringArray = PackedStringArray()
+  if catalog == null:
+    warnings.append("No HerringboneConstraintCatalog assigned")
+  if tile_set == null:
+    warnings.append("No TileSet assigned")
+  return warnings
+
+
 func _rebuild_grid() -> void:
   _grid_rects.clear()
   if catalog == null:
