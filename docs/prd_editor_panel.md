@@ -107,8 +107,8 @@ The user then opens the saved `.tres` in the inspector and assigns `source_id` a
 │  H Origin: [(0, 96)] Cols: [8]   Rows: [8]                      │
 │  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄                            │
 │  [Import from Chunk Map]  [Load from File...]  [Save Preset...]  │
-│  ✓ Imported 125 tiles (64 H + 61 V), 3 skipped                  │
-│  ⚠ Validation: 83 unique constraint combos (64.8%)               │
+│  ✓ Imported 128 tiles (64 H + 64 V), 0 skipped                  │
+│  ✓ Validation: 100.0% complete                                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -140,9 +140,9 @@ The user then opens the saved `.tres` in the inspector and assigns `source_id` a
 ```
 ┌─ Generate & Place ───────────────────────────────────────────────┐
 │  Map Width: [20]    Map Height: [20]    Seed: [42]               │
-│  Fallback Tile: [source: 0, atlas: (0,0) ▼]                     │
+│  Fallback Tile: source [0]  atlas_x [0]  atlas_y [0]            │
 │                                                                  │
-│  [Generate & Place]                                              │
+│  [Generate & Place]  [Clear Generated Region]                    │
 │  ✓ Generated 170 placements, populated TileMapLayer "Dungeon"    │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -150,15 +150,16 @@ The user then opens the saved `.tres` in the inspector and assigns `source_id` a
 **Controls:**
 * **Map Width / Height** — integer spinboxes for the generation grid size.
 * **Seed** — integer spinbox for the RNG seed.
-* **Fallback Tile** — source_id + atlas_coords for tiles placed when a constraint combo has no matching imported tile. Defaults to the first tile in the TileSet (wall).
+* **Fallback Tile** — three `SpinBox` controls: `source_id` (int), `atlas_x` (int), `atlas_y` (int). Defaults to `source_id = 0`, `atlas_coords = (0, 0)`.
 * **Generate & Place** button — runs the full generation and population pipeline.
+* **Clear Generated Region** button — clears only the cells within the last generated region without re-generating. Disabled if no generation has been run.
 
 **Behavior:**
 1. Require a tile library from Step 2 (show error if not imported yet).
 2. Require a selected `TileMapLayer` with a `TileSet` assigned.
 3. Instantiate `HerringboneGenerator`, configure edge/corner mode from the tile library's `is_corner` flag.
 4. Set colors, load definitions, build tileset, generate abstract map.
-5. Clear the target `TileMapLayer`.
+5. Clear only cells within the generated map bounds (width x base_unit_size, height x base_unit_size region starting at grid origin). Cells outside this region are untouched.
 6. Call `populate_tilemap()` with the abstract map, tile library, and fallback cell.
 7. Show inline status with placement count and target layer name.
 
@@ -175,7 +176,7 @@ The user then opens the saved `.tres` in the inspector and assigns `source_id` a
 | File | Change |
 |---|---|
 | `herringbone_plugin.gd` | Register bottom panel via `add_control_to_bottom_panel()`, handle scene tree selection signals |
-| `herringbone_color_tile_mapping.gd` | Add `detect_colors_from_image(image, transparency_color)` method |
+| `herringbone_color_tile_mapping.gd` | Add `detect_colors_from_image(image, transparency_color, tolerance)` method |
 
 ### **5.3 New Resource Type**
 
@@ -225,9 +226,10 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
   func detect_colors_from_image(
     image: Image,
     transparency_color: Color = Color(1, 0, 1, 1),
+    tolerance: float = 5.0 / 255.0,
   ) -> void:
   ```
-  Scans all pixels in the image. Groups unique colors using ±5/255 tolerance. Excludes the transparency color. Populates `entries` with one entry per unique color, using placeholder atlas coordinates (`source_id = -1`, `atlas_coords = (-1, -1)`).
+  Scans all pixels in the image. Groups unique colors using configurable tolerance (default ±5/255). For each new pixel color, if any existing group's representative is within `tolerance` on all RGB channels, the pixel is assigned to that group; otherwise a new group is created with the pixel as its representative (first-seen wins). Excludes the transparency color. Populates `entries` with one entry per unique color group, using placeholder atlas coordinates (`source_id = -1`, `atlas_coords = (-1, -1)`).
 
 * **Requirement 6.1.2 — File save dialog:**
   After detection, the panel opens an `EditorFileDialog` in save mode (`.tres` filter) so the user chooses where to save the mapping resource.
@@ -270,7 +272,7 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
   2. **Import** — chunk map picker, mapping picker, preset dropdown, parameter fields, import button, status label.
   3. **Generate & Place** — size/seed spinboxes, fallback tile config, generate button, status label.
 
-  The chunk map file picker is shared between sections 1 and 2 — setting it in one updates the other.
+  The chunk map path is stored once on the panel. Both Detect Colors and Import sections reference the same value. Changing the path via either section's Browse button updates both. The file picker control is physically located in the Detect Colors section; the Import section displays the current path as a read-only label with its own Browse button that updates the shared value.
 
 * **Requirement 6.3.3 — Target display:**
   A header bar at the top shows "Target: NodeName" (the selected TileMapLayer) or "No TileMapLayer selected" with greyed-out controls.
@@ -281,7 +283,7 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
   When the user selects a `TileMapLayer` in the scene tree, the editor switches to the Herringbone bottom panel tab. The plugin implements `_handles(object) -> bool` returning `true` for `TileMapLayer` nodes.
 
 * **Requirement 6.4.2 — Target tracking:**
-  The panel stores a reference to the currently selected `TileMapLayer`. If the node is deleted or deselected, the panel shows "No TileMapLayer selected" and disables action buttons.
+  The panel stores a reference to the currently selected `TileMapLayer`. If the node is deleted or deselected, the panel shows "No TileMapLayer selected" and disables action buttons. When the user selects a different `TileMapLayer`, the in-memory tile library and import status persist — only the target reference changes. This allows generating the same tile set onto multiple layers without re-importing.
 
 ### **6.5 Status Feedback**
 
@@ -314,7 +316,7 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
 * Implement Import section: mapping picker, preset dropdown, parameter fields, import button.
 * Wire up the import pipeline: load image, load mapping, call `import_chunk_map()`, validate.
 * Show inline status with tile counts and validation summary.
-* **Gate:** Selecting Barrett preset and clicking Import shows "125 tiles imported" with validation percentage.
+* **Gate:** Selecting Barrett preset and clicking Import shows "128 tiles imported" with validation percentage.
 
 ### **Phase 3: Generate & Place Section**
 
@@ -343,9 +345,9 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
 
 ## **9. Testing Strategy**
 
-* **Unit tests** for `detect_colors_from_image()` — verify color grouping with tolerance, transparency exclusion, entry structure.
-* **Unit test** for `HerringboneImportPreset` — verify Barrett factory values, round-trip serialization.
-* **Integration test** — the full pipeline called programmatically (detect → import → generate → populate) to verify end-to-end wiring without the UI layer.
+* **`test/unit/test_color_detection.gd`** — `detect_colors_from_image()`: tolerance grouping (colors within ±5/255 merge, colors outside don't), transparency exclusion, first-seen representative selection, configurable tolerance parameter, entry structure with placeholder atlas coords.
+* **`test/unit/test_import_preset.gd`** — `HerringboneImportPreset`: Barrett factory values match expected defaults, round-trip `.tres` serialization preserves all fields.
+* **`test/integration/test_editor_panel_pipeline.gd`** — full pipeline called programmatically (detect → import → generate → populate) to verify end-to-end wiring without the UI layer.
 * **Manual testing** — open the editor, enable the addon, select a TileMapLayer, walk through all three steps. Verify inline status messages, file dialogs, preset loading.
 
 ## **10. Resolved Design Decisions**
@@ -353,6 +355,8 @@ When the user selects a `TileMapLayer`, Godot calls `_handles()` → `true`, the
 * **Color filtering:** Detect Colors finds all non-transparency colors including constraint colors (yellow, green). The user manually deletes unwanted entries from the saved mapping resource. No auto-filtering.
 
 * **Load tile library:** The Import section includes a "Load from File..." button that loads a previously saved `HerringboneMacroSet` `.tres` directly, skipping the chunk map import. This supports the manual authoring workflow (`HerringboneAuthoringLayer` → `bake_macro_set()` → save → load in panel → generate).
+
+* **Corner-mode support via Load from File:** Loading a corner-mode `HerringboneMacroSet` via "Load from File..." is supported. The Generate & Place step reads `is_corner` from the loaded set and configures the generator accordingly. Both corner and edge mode work through the same pipeline.
 
 ## **11. References**
 

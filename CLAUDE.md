@@ -114,10 +114,12 @@ print("WANG: Generated %d tiles" % count)
 print("GEN: Herringbone pattern built for %s" % region)
 ```
 
-### UI Rules
+### UI Rules (Game Assets)
 - **All UI must be previewable in the Godot editor** — no empty containers populated only at runtime
 - **Never create UI nodes in GDScript** — no `Label.new()`, `HBoxContainer.new()`, etc. All structural UI lives in `.tscn` files
 - **Never use inline `Color()` literals** — use `@export` vars or resources
+
+> **Exception — Editor plugins:** `@tool` scripts that build editor panels (bottom docks, inspector plugins) may construct UI nodes in code. Godot's editor plugin API expects code-built controls passed to methods like `add_control_to_bottom_panel()`. The `.tscn` rule applies to game/runtime UI, not editor tooling.
 - **Never use hardcoded `KEY_*` constants** — define actions in Input Map, check via `event.is_action_pressed()`
 - Pattern: `instantiate() -> add_child() -> setup() -> connect signals`
 
