@@ -43,10 +43,23 @@ static func create_hbw_3131() -> HerringboneConstraintCatalog:
   return catalog
 
 
+static func create_hbe_222222() -> HerringboneConstraintCatalog:
+  var catalog: HerringboneConstraintCatalog = HerringboneConstraintCatalog.new()
+  catalog.schema_name = "hbe-222222"
+  catalog.num_colors = PackedInt32Array([2, 2, 2, 2, 2, 2])
+  catalog.is_corner = false
+  catalog.description = (
+    "Herringbone Edge 2-2-2-2-2-2: 2 colors per edge type, "
+    + "128 tiles (64H + 64V). Barrett's binary dungeon corridors."
+  )
+  return catalog
+
+
 func create_empty_macro_set(
   base_unit_size: int,
 ) -> HerringboneMacroSet:
   var macro_set: HerringboneMacroSet = HerringboneMacroSet.new()
   macro_set.base_unit_size = base_unit_size
   macro_set.num_colors = num_colors.duplicate()
+  macro_set.is_corner = is_corner
   return macro_set

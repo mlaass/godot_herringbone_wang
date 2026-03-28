@@ -14,6 +14,18 @@ void HerringboneGenerator::_bind_methods() {
       D_METHOD("get_corner_colors"),
       &HerringboneGenerator::get_corner_colors);
   ClassDB::bind_method(
+      D_METHOD("set_constraint_mode", "is_corner"),
+      &HerringboneGenerator::set_constraint_mode);
+  ClassDB::bind_method(
+      D_METHOD("get_constraint_mode"),
+      &HerringboneGenerator::get_constraint_mode);
+  ClassDB::bind_method(
+      D_METHOD("set_edge_colors", "colors"),
+      &HerringboneGenerator::set_edge_colors);
+  ClassDB::bind_method(
+      D_METHOD("get_edge_colors"),
+      &HerringboneGenerator::get_edge_colors);
+  ClassDB::bind_method(
       D_METHOD("load_tile_definitions", "definitions"),
       &HerringboneGenerator::load_tile_definitions);
   ClassDB::bind_method(
@@ -61,9 +73,47 @@ PackedInt32Array HerringboneGenerator::get_corner_colors() const {
   return result;
 }
 
+void HerringboneGenerator::set_constraint_mode(bool p_is_corner) {
+  is_corner_ = p_is_corner;
+  ready_ = false;
+}
+
+bool HerringboneGenerator::get_constraint_mode() const {
+  return is_corner_;
+}
+
+void HerringboneGenerator::set_edge_colors(PackedInt32Array p_colors) {
+  if (p_colors.size() != 6) {
+    last_error_ = "edge_colors must have exactly 6 elements";
+    return;
+  }
+  for (int i = 0; i < 6; ++i) {
+    int c = p_colors[i];
+    if (c < 1 || c > 8) {
+      last_error_ = "edge colors must be between 1 and 8";
+      return;
+    }
+    edge_colors_[i] = c;
+  }
+  ready_ = false;
+}
+
+PackedInt32Array HerringboneGenerator::get_edge_colors() const {
+  PackedInt32Array result;
+  result.resize(6);
+  for (int i = 0; i < 6; ++i) {
+    result[i] = edge_colors_[i];
+  }
+  return result;
+}
+
 void HerringboneGenerator::load_tile_definitions(Array p_defs) {
   tile_defs_.clear();
   tile_defs_.reserve(p_defs.size());
+
+  // Edge-mode permutation: PRD canonical -> stb a,b,c,d,e,f
+  static const int h_perm[6] = {1, 2, 0, 3, 4, 5};
+  static const int v_perm[6] = {0, 1, 4, 2, 5, 3};
 
   for (int i = 0; i < p_defs.size(); ++i) {
     Dictionary d = p_defs[i];
@@ -76,9 +126,19 @@ void HerringboneGenerator::load_tile_definitions(Array p_defs) {
       tile_defs_.clear();
       return;
     }
-    for (int j = 0; j < 6; ++j) {
-      def.constraints[j] = cons[j];
+
+    if (!is_corner_) {
+      // Permute from PRD canonical order to stb a-f order
+      const int *perm = (def.orientation == 0) ? h_perm : v_perm;
+      for (int j = 0; j < 6; ++j) {
+        def.constraints[j] = cons[perm[j]];
+      }
+    } else {
+      for (int j = 0; j < 6; ++j) {
+        def.constraints[j] = cons[j];
+      }
     }
+
     tile_defs_.push_back(def);
   }
   ready_ = false;
@@ -91,12 +151,20 @@ bool HerringboneGenerator::build_tileset() {
   // Create stb config
   stbhw_config config;
   memset(&config, 0, sizeof(config));
-  config.is_corner = 1;
   config.short_side_len = SIDELEN;
   config.num_vary_x = 1;
   config.num_vary_y = 1;
-  for (int i = 0; i < 4; ++i) {
-    config.num_color[i] = corner_colors_[i];
+
+  if (is_corner_) {
+    config.is_corner = 1;
+    for (int i = 0; i < 4; ++i) {
+      config.num_color[i] = corner_colors_[i];
+    }
+  } else {
+    config.is_corner = 0;
+    for (int i = 0; i < 6; ++i) {
+      config.num_color[i] = edge_colors_[i];
+    }
   }
 
   // Get template size
@@ -129,8 +197,6 @@ bool HerringboneGenerator::build_tileset() {
   }
 
   // Paint tile pixels with tile_id encoding (pixel proxy)
-  // For each tile in the tileset, find the matching definition
-  // and overwrite all interior pixels with R=tile_id, G=MAGIC, B=MAGIC
   int sl = tileset_->short_side_len;
 
   for (int i = 0; i < tileset_->num_h_tiles; ++i) {
@@ -203,7 +269,6 @@ Array HerringboneGenerator::generate_abstract_map(
   }
 
   // Walk the herringbone layout to extract tile placements
-  // This replicates the layout loop from stbhw_generate_image
   int ypos = -1 * sl;
   for (int j = -1; ypos < out_h; ++j) {
     int phase = j & 3;
@@ -221,8 +286,8 @@ Array HerringboneGenerator::generate_abstract_map(
 
       // Horizontal tile at (xpos, ypos), size 2*sl x sl
       if (xpos + sl * 2 >= 0 && ypos >= 0) {
-        int sx = xpos + sl;       // sample x (center)
-        int sy = ypos + sl / 2;   // sample y (center)
+        int sx = xpos + sl;
+        int sy = ypos + sl / 2;
         if (sx >= 0 && sx < out_w && sy >= 0 && sy < out_h) {
           int pidx = sy * stride + sx * 3;
           if (output[pidx + 1] == MAGIC_G && output[pidx + 2] == MAGIC_B) {
@@ -240,8 +305,8 @@ Array HerringboneGenerator::generate_abstract_map(
 
       // Vertical tile at (vxpos, ypos), size sl x 2*sl
       if (vxpos < out_w) {
-        int sx = vxpos + sl / 2;  // sample x (center)
-        int sy = ypos + sl;       // sample y (center)
+        int sx = vxpos + sl / 2;
+        int sy = ypos + sl;
         if (sx >= 0 && sx < out_w && sy >= 0 && sy < out_h) {
           int pidx = sy * stride + sx * 3;
           if (output[pidx + 1] == MAGIC_G && output[pidx + 2] == MAGIC_B) {

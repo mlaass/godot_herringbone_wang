@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="HerringboneColorTileMapping" format=3 uid="uid://bjcdcocfvy4x1"]
+
+[ext_resource type="Script" uid="uid://cn5h8glw52850" path="res://addons/herringbone_wang_generator/herringbone_color_tile_mapping.gd" id="1_a8x42"]
+
+[resource]
+script = ExtResource("1_a8x42")
+metadata/_custom_type_script = "uid://cn5h8glw52850"

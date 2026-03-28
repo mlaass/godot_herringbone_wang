@@ -2,6 +2,7 @@ class_name HerringboneMacroSet
 extends Resource
 
 @export var base_unit_size: int = 4
+@export var is_corner: bool = true
 @export var num_colors: PackedInt32Array = PackedInt32Array([2, 2, 2, 2])
 @export var h_tiles: Array[HerringboneMacroData] = []
 @export var v_tiles: Array[HerringboneMacroData] = []
@@ -40,6 +41,23 @@ func get_missing_v_constraints() -> Array[PackedInt32Array]:
     HerringboneMacroData.Orientation.VERTICAL,
     v_tiles,
   )
+
+
+func to_generator_defs() -> Array:
+  var defs: Array = []
+  for tile: HerringboneMacroData in h_tiles:
+    defs.append({
+      "tile_id": tile.tile_id,
+      "orientation": HerringboneMacroData.Orientation.HORIZONTAL,
+      "constraints": tile.constraints,
+    })
+  for tile: HerringboneMacroData in v_tiles:
+    defs.append({
+      "tile_id": tile.tile_id,
+      "orientation": HerringboneMacroData.Orientation.VERTICAL,
+      "constraints": tile.constraints,
+    })
+  return defs
 
 
 func find_tile_by_constraints(
@@ -101,6 +119,8 @@ func _enumerate_constraint_combos(
 func _get_corner_counts_for_orientation(
   orient: int,
 ) -> Array[int]:
+  if not is_corner:
+    return _get_edge_counts_for_orientation(orient)
   # Herringbone tiles have 6 constraint vertices. Each vertex belongs to
   # one of 4 corner classes. The mapping from vertex index to corner class
   # depends on orientation (H vs V). For a complete stochastic set, every
@@ -119,6 +139,29 @@ func _get_corner_counts_for_orientation(
   for i: int in range(6):
     var cls: int = class_map[i]
     counts.append(num_colors[cls])
+  return counts
+
+
+func _get_edge_counts_for_orientation(
+  orient: int,
+) -> Array[int]:
+  # Edge mode: each constraint position maps to one of 6 edge types.
+  # The mapping depends on orientation and uses PRD canonical ordering.
+  #
+  # Edge type assignments (from stb source, remapped to PRD order):
+  #   H: [left=type1, top-left=type2, top-right=type3,
+  #       right=type4, bottom-left=type0, bottom-right=type2]
+  #   V: [top=type0, left-upper=type5, left-lower=type4,
+  #       bottom=type3, right-upper=type1, right-lower=type5]
+  var type_map: Array[int] = []
+  if orient == HerringboneMacroData.Orientation.HORIZONTAL:
+    type_map = [1, 2, 3, 4, 0, 2]
+  else:
+    type_map = [0, 5, 4, 3, 1, 5]
+
+  var counts: Array[int] = []
+  for i: int in range(6):
+    counts.append(num_colors[type_map[i]])
   return counts
 
 

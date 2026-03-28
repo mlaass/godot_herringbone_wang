@@ -221,11 +221,13 @@ static func populate_tilemap(
   target: TileMapLayer,
   abstract_map: Array,
   macro_set: HerringboneMacroSet,
+  fallback_cell: Dictionary = {},
 ) -> void:
   if target == null or macro_set == null:
     return
 
   var n: int = macro_set.base_unit_size
+  var has_fallback: bool = fallback_cell.has("source_id")
 
   for i: int in range(abstract_map.size()):
     var entry: Dictionary = abstract_map[i]
@@ -246,11 +248,25 @@ static func populate_tilemap(
         data = t
         break
 
-    if data == null:
-      continue
-
     var base_x: int = gx * n
     var base_y: int = gy * n
+
+    if data == null:
+      if has_fallback:
+        var tw: int = 2 * n if orient == 0 else n
+        var th: int = n if orient == 0 else 2 * n
+        var fb_src: int = fallback_cell.get("source_id", 0)
+        var fb_atlas: Vector2i = fallback_cell.get(
+          "atlas_coords", Vector2i(0, 0),
+        )
+        var fb_alt: int = fallback_cell.get("alternative_tile", 0)
+        for cy: int in range(th):
+          for cx: int in range(tw):
+            target.set_cell(
+              Vector2i(base_x + cx, base_y + cy),
+              fb_src, fb_atlas, fb_alt,
+            )
+      continue
 
     for cy: int in range(data.height):
       for cx: int in range(data.width):

@@ -23,8 +23,12 @@ static func validate(macro_set: HerringboneMacroSet) -> Dictionary:
   if macro_set.base_unit_size <= 0:
     errors.append("base_unit_size must be positive")
 
-  if macro_set.num_colors.size() != 4:
-    errors.append("num_colors must have 4 elements")
+  var expected_color_count: int = 4 if macro_set.is_corner else 6
+  if macro_set.num_colors.size() != expected_color_count:
+    errors.append(
+      "num_colors must have %d elements for %s mode"
+      % [expected_color_count, "corner" if macro_set.is_corner else "edge"]
+    )
 
   for tile: HerringboneMacroData in macro_set.h_tiles:
     if not tile.is_valid():

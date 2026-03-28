@@ -26,6 +26,11 @@ public:
   void set_corner_colors(PackedInt32Array p_colors);
   PackedInt32Array get_corner_colors() const;
 
+  void set_constraint_mode(bool p_is_corner);
+  bool get_constraint_mode() const;
+  void set_edge_colors(PackedInt32Array p_colors);
+  PackedInt32Array get_edge_colors() const;
+
   void load_tile_definitions(Array p_defs);
   bool build_tileset();
   bool is_ready() const;
@@ -44,7 +49,9 @@ private:
     int constraints[6];
   };
 
+  bool is_corner_ = true;
   int corner_colors_[4] = {2, 2, 2, 2};
+  int edge_colors_[6] = {2, 2, 2, 2, 2, 2};
   std::vector<TileDef> tile_defs_;
   stbhw_tileset *tileset_ = nullptr;
   bool ready_ = false;
