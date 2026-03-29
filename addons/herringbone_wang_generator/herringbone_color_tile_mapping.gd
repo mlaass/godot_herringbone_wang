@@ -53,6 +53,47 @@ func populate_from_atlas(
       })
 
 
+func detect_colors_from_image(
+  image: Image,
+  transparency_col: Color = Color(1, 0, 1, 1),
+  tolerance: float = 5.0 / 255.0,
+) -> void:
+  entries.clear()
+  transparency_color = transparency_col
+  if image == null:
+    return
+  var representatives: Array[Color] = []
+  for y: int in range(image.get_height()):
+    for x: int in range(image.get_width()):
+      var color: Color = image.get_pixel(x, y)
+      if _colors_within_tolerance(color, transparency_col, tolerance):
+        continue
+      var found: bool = false
+      for rep: Color in representatives:
+        if _colors_within_tolerance(color, rep, tolerance):
+          found = true
+          break
+      if found:
+        continue
+      representatives.append(color)
+      entries.append({
+        "color": color,
+        "source_id": -1,
+        "atlas_coords": Vector2i(-1, -1),
+        "alternative_tile": 0,
+      })
+
+
+static func _colors_within_tolerance(
+  a: Color, b: Color, tol: float,
+) -> bool:
+  return (
+    absf(a.r - b.r) <= tol
+    and absf(a.g - b.g) <= tol
+    and absf(a.b - b.b) <= tol
+  )
+
+
 static func _empty_cell() -> Dictionary:
   return {
     "source_id": -1,
