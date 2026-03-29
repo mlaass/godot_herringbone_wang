@@ -8,6 +8,7 @@ var _target_layer: TileMapLayer = null
 # -- Shared state --
 var _chunk_map_path: String = ""
 var _mapping_path: String = ""
+var _current_mapping: HerringboneColorTileMapping = null
 var _macro_set: HerringboneMacroSet = null
 var _last_map_width: int = 0
 var _last_map_height: int = 0
@@ -15,11 +16,15 @@ var _last_map_height: int = 0
 # -- Header --
 var _target_label: Label
 
-# -- Section 1: Detect Colors --
+# -- Section 1: Detect Colors + Mapping --
 var _chunk_map_line_edit: LineEdit
 var _transparency_picker: ColorPickerButton
 var _detect_btn: Button
 var _detect_status: Label
+var _mapping_entries_container: VBoxContainer
+var _mapping_buttons_row: HBoxContainer
+var _save_mapping_btn: Button
+var _load_mapping_btn: Button
 
 # -- Section 2: Import --
 var _import_chunk_label: Label
@@ -154,16 +159,35 @@ func _build_detect_section() -> VBoxContainer:
   trans_row.add_child(_transparency_picker)
   vbox.add_child(trans_row)
 
-  # Detect button
+  # Detect button row
+  var detect_row: HBoxContainer = HBoxContainer.new()
   _detect_btn = Button.new()
   _detect_btn.text = "Detect Colors"
   _detect_btn.pressed.connect(_on_detect_pressed)
-  vbox.add_child(_detect_btn)
+  detect_row.add_child(_detect_btn)
+  _load_mapping_btn = Button.new()
+  _load_mapping_btn.text = "Load Mapping..."
+  _load_mapping_btn.pressed.connect(_on_load_mapping_pressed)
+  detect_row.add_child(_load_mapping_btn)
+  vbox.add_child(detect_row)
 
   # Status
   _detect_status = Label.new()
   _detect_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
   vbox.add_child(_detect_status)
+
+  # Mapping entries (populated after detection)
+  _mapping_entries_container = VBoxContainer.new()
+  vbox.add_child(_mapping_entries_container)
+
+  # Save mapping button (hidden until entries exist)
+  _mapping_buttons_row = HBoxContainer.new()
+  _mapping_buttons_row.visible = false
+  _save_mapping_btn = Button.new()
+  _save_mapping_btn.text = "Save Mapping..."
+  _save_mapping_btn.pressed.connect(_on_save_mapping_pressed)
+  _mapping_buttons_row.add_child(_save_mapping_btn)
+  vbox.add_child(_mapping_buttons_row)
 
   return vbox
 
@@ -451,35 +475,305 @@ func _on_detect_pressed() -> void:
     )
     return
 
-  var mapping: HerringboneColorTileMapping = (
-    HerringboneColorTileMapping.new()
-  )
-  mapping.detect_colors_from_image(
+  _current_mapping = HerringboneColorTileMapping.new()
+  _current_mapping.detect_colors_from_image(
     image, _transparency_picker.color,
   )
 
-  var count: int = mapping.entries.size()
+  var count: int = _current_mapping.entries.size()
   print("PANEL: Detected %d content colors" % count)
+  _set_status(
+    _detect_status,
+    "Found %d content colors" % count,
+    "success",
+  )
+  _rebuild_mapping_ui()
 
-  # Open save dialog
+
+func _on_load_mapping_pressed() -> void:
+  _open_file_dialog(
+    EditorFileDialog.FILE_MODE_OPEN_FILE,
+    PackedStringArray(["*.tres ; Godot Resource"]),
+    func(path: String) -> void:
+      var res: Resource = ResourceLoader.load(
+        path, "", ResourceLoader.CACHE_MODE_IGNORE,
+      )
+      if not res is HerringboneColorTileMapping:
+        _set_status(
+          _detect_status,
+          "Not a color mapping: %s" % path,
+          "error",
+        )
+        return
+      _current_mapping = res as HerringboneColorTileMapping
+      _mapping_path = path
+      _mapping_line_edit.text = path
+      _set_status(
+        _detect_status,
+        "Loaded mapping with %d entries from %s"
+        % [_current_mapping.entries.size(), path],
+        "success",
+      )
+      _rebuild_mapping_ui(),
+  )
+
+
+func _on_save_mapping_pressed() -> void:
+  if _current_mapping == null:
+    return
   _open_file_dialog(
     EditorFileDialog.FILE_MODE_SAVE_FILE,
     PackedStringArray(["*.tres ; Godot Resource"]),
     func(path: String) -> void:
-      var err: int = ResourceSaver.save(mapping, path)
+      var err: int = ResourceSaver.save(_current_mapping, path)
       if err != OK:
         _set_status(
           _detect_status,
-          "Failed to save resource: error %d" % err,
+          "Failed to save: error %d" % err,
           "error",
         )
         return
+      _mapping_path = path
+      _mapping_line_edit.text = path
       _set_status(
         _detect_status,
-        "Found %d content colors. Saved to %s" % [count, path],
+        "Mapping saved to %s" % path,
         "success",
       ),
   )
+
+
+# -- Mapping entry editor --
+
+
+func _rebuild_mapping_ui() -> void:
+  # Clear existing entry rows
+  for child: Node in _mapping_entries_container.get_children():
+    child.queue_free()
+
+  if _current_mapping == null or _current_mapping.entries.is_empty():
+    _mapping_buttons_row.visible = false
+    return
+
+  # Header row
+  var header: HBoxContainer = HBoxContainer.new()
+  var color_lbl: Label = _create_label("Color")
+  color_lbl.custom_minimum_size.x = 80
+  header.add_child(color_lbl)
+  var tile_lbl: Label = _create_label("Tile")
+  tile_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  header.add_child(tile_lbl)
+  _mapping_entries_container.add_child(header)
+
+  for i: int in range(_current_mapping.entries.size()):
+    var entry: Dictionary = _current_mapping.entries[i]
+    var row: HBoxContainer = _build_mapping_entry_row(i, entry)
+    _mapping_entries_container.add_child(row)
+
+  _mapping_buttons_row.visible = true
+
+
+func _build_mapping_entry_row(
+  index: int, entry: Dictionary,
+) -> HBoxContainer:
+  var row: HBoxContainer = HBoxContainer.new()
+
+  # Color swatch
+  var swatch: ColorRect = ColorRect.new()
+  swatch.color = entry["color"]
+  swatch.custom_minimum_size = Vector2(24, 24)
+  row.add_child(swatch)
+
+  # Color text
+  var color: Color = entry["color"]
+  var color_text: Label = _create_label(
+    "  #%s" % color.to_html(false),
+  )
+  color_text.custom_minimum_size.x = 70
+  row.add_child(color_text)
+
+  # Tile assignment display
+  var tile_label: Label = Label.new()
+  tile_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  _update_tile_label(tile_label, entry)
+  row.add_child(tile_label)
+
+  # Tile preview (small texture showing the assigned tile)
+  var preview: TextureRect = TextureRect.new()
+  preview.custom_minimum_size = Vector2(24, 24)
+  preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+  preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+  _update_tile_preview(preview, entry)
+  row.add_child(preview)
+
+  # Pick tile button
+  var pick_btn: Button = Button.new()
+  pick_btn.text = "Pick Tile..."
+  pick_btn.pressed.connect(
+    _on_pick_tile_pressed.bind(index, tile_label, preview),
+  )
+  row.add_child(pick_btn)
+
+  # Remove button
+  var remove_btn: Button = Button.new()
+  remove_btn.text = "X"
+  remove_btn.custom_minimum_size = Vector2(28, 0)
+  remove_btn.pressed.connect(func() -> void:
+    _current_mapping.entries.remove_at(index)
+    _rebuild_mapping_ui()
+  )
+  row.add_child(remove_btn)
+
+  return row
+
+
+func _update_tile_label(label: Label, entry: Dictionary) -> void:
+  var sid: int = entry.get("source_id", -1)
+  if sid < 0:
+    label.text = "(unassigned)"
+    label.add_theme_color_override(
+      "font_color", Color(1.0, 1.0, 0.4),
+    )
+  else:
+    var coords: Vector2i = entry["atlas_coords"]
+    label.text = "src:%d (%d, %d)" % [sid, coords.x, coords.y]
+    label.remove_theme_color_override("font_color")
+
+
+func _update_tile_preview(
+  preview: TextureRect, entry: Dictionary,
+) -> void:
+  var sid: int = entry.get("source_id", -1)
+  preview.texture = null
+  if sid < 0:
+    return
+  if not is_instance_valid(_target_layer):
+    return
+  if _target_layer.tile_set == null:
+    return
+  var coords: Vector2i = entry["atlas_coords"]
+  var tex: Texture2D = _get_tile_icon(
+    _target_layer.tile_set, sid, coords,
+  )
+  preview.texture = tex
+
+
+func _get_tile_icon(
+  tileset: TileSet, source_id: int, atlas_coords: Vector2i,
+) -> Texture2D:
+  if not tileset.has_source(source_id):
+    return null
+  var source: TileSetSource = tileset.get_source(source_id)
+  if not source is TileSetAtlasSource:
+    return null
+  var atlas: TileSetAtlasSource = source as TileSetAtlasSource
+  if atlas.texture == null:
+    return null
+  var region: Rect2i = atlas.get_tile_texture_region(atlas_coords)
+  var atlas_tex: AtlasTexture = AtlasTexture.new()
+  atlas_tex.atlas = atlas.texture
+  atlas_tex.region = Rect2(region)
+  return atlas_tex
+
+
+# -- Tile picker popup --
+
+
+func _on_pick_tile_pressed(
+  entry_index: int, tile_label: Label, preview: TextureRect,
+) -> void:
+  if not is_instance_valid(_target_layer):
+    _set_status(
+      _detect_status,
+      "Select a TileMapLayer first to pick tiles",
+      "error",
+    )
+    return
+  if _target_layer.tile_set == null:
+    _set_status(
+      _detect_status,
+      "TileMapLayer has no TileSet assigned",
+      "error",
+    )
+    return
+
+  var tileset: TileSet = _target_layer.tile_set
+  var dialog: AcceptDialog = AcceptDialog.new()
+  dialog.title = "Pick Tile"
+  dialog.min_size = Vector2i(400, 350)
+
+  var vbox: VBoxContainer = VBoxContainer.new()
+  dialog.add_child(vbox)
+
+  # Source selector (if multiple sources)
+  var source_count: int = tileset.get_source_count()
+  var source_option: OptionButton = OptionButton.new()
+  for si: int in range(source_count):
+    var sid: int = tileset.get_source_id(si)
+    var src: TileSetSource = tileset.get_source(sid)
+    if src is TileSetAtlasSource:
+      source_option.add_item("Source %d" % sid, sid)
+  if source_option.item_count > 1:
+    var src_row: HBoxContainer = HBoxContainer.new()
+    src_row.add_child(_create_label("Source:"))
+    src_row.add_child(source_option)
+    vbox.add_child(src_row)
+
+  # Tile grid
+  var tile_list: ItemList = ItemList.new()
+  tile_list.icon_mode = ItemList.ICON_MODE_TOP
+  tile_list.max_columns = 0
+  tile_list.fixed_icon_size = Vector2i(32, 32)
+  tile_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+  tile_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  vbox.add_child(tile_list)
+
+  # Populate tiles for the first source
+  var populate_fn: Callable = func(source_id: int) -> void:
+    tile_list.clear()
+    if not tileset.has_source(source_id):
+      return
+    var src: TileSetSource = tileset.get_source(source_id)
+    if not src is TileSetAtlasSource:
+      return
+    var atlas: TileSetAtlasSource = src as TileSetAtlasSource
+    for ti: int in range(atlas.get_tiles_count()):
+      var coords: Vector2i = atlas.get_tile_id(ti)
+      var icon: Texture2D = _get_tile_icon(
+        tileset, source_id, coords,
+      )
+      var item_idx: int = tile_list.add_item(
+        "(%d,%d)" % [coords.x, coords.y], icon,
+      )
+      tile_list.set_item_metadata(
+        item_idx,
+        {"source_id": source_id, "atlas_coords": coords},
+      )
+
+  if source_option.item_count > 0:
+    var first_id: int = source_option.get_item_id(0)
+    populate_fn.call(first_id)
+    source_option.item_selected.connect(
+      func(idx: int) -> void:
+        var sid: int = source_option.get_item_id(idx)
+        populate_fn.call(sid)
+    )
+
+  # On tile selected, update the mapping entry
+  tile_list.item_activated.connect(
+    func(item_idx: int) -> void:
+      var meta: Dictionary = tile_list.get_item_metadata(item_idx)
+      var entry: Dictionary = _current_mapping.entries[entry_index]
+      entry["source_id"] = meta["source_id"]
+      entry["atlas_coords"] = meta["atlas_coords"]
+      _update_tile_label(tile_label, entry)
+      _update_tile_preview(preview, entry)
+      dialog.queue_free()
+  )
+
+  dialog.canceled.connect(dialog.queue_free)
+  EditorInterface.get_base_control().add_child(dialog)
+  dialog.popup_centered(Vector2i(450, 400))
 
 
 # -- Section 2: Import handlers --
@@ -518,11 +812,6 @@ func _on_import_pressed() -> void:
   if _chunk_map_path == "":
     _set_status(_import_status, "Select a chunk map image first", "error")
     return
-  if _mapping_path == "":
-    _set_status(
-      _import_status, "Select a color mapping resource first", "error",
-    )
-    return
 
   var image: Image = Image.load_from_file(
     ProjectSettings.globalize_path(_chunk_map_path),
@@ -535,13 +824,16 @@ func _on_import_pressed() -> void:
     )
     return
 
-  var mapping: HerringboneColorTileMapping = ResourceLoader.load(
-    _mapping_path, "", ResourceLoader.CACHE_MODE_IGNORE,
-  ) as HerringboneColorTileMapping
+  # Use in-memory mapping if available, otherwise load from file
+  var mapping: HerringboneColorTileMapping = _current_mapping
+  if mapping == null and _mapping_path != "":
+    mapping = ResourceLoader.load(
+      _mapping_path, "", ResourceLoader.CACHE_MODE_IGNORE,
+    ) as HerringboneColorTileMapping
   if mapping == null:
     _set_status(
       _import_status,
-      "Failed to load mapping: %s" % _mapping_path,
+      "No color mapping — detect colors or load a .tres first",
       "error",
     )
     return
